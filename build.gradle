@@ -23,8 +23,8 @@ loom {
 }
 
 configurations {
-    library
-    implementation.extendsFrom(library)
+    // Keep the split source set wiring: the client source set compiles against the
+    // main implementation classpath.
     clientImplementation.extendsFrom(implementation)
 }
 
@@ -35,6 +35,24 @@ repositories {
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html
     // for more information about repositories.
     mavenCentral()
+
+    // Loom 1.17 routes org.lwjgl resolution to the Mojang library repo, which only
+    // hosts the classifiers Minecraft itself ships. That prevents Krs from bundling
+    // the LWJGL STB natives for Linux ARM32/ARM64/PPC64LE/RISCV64 (they exist on Maven
+    // Central but not on libraries.minecraft.net). Declaring org.lwjgl as exclusive
+    // content of Maven Central makes those classifiers resolvable. Versions are still
+    // pinned explicitly to ${project.lwjgl_version} (the same version Minecraft 26.2
+    // ships), so nothing can drift from Minecraft's own LWJGL stack.
+    exclusiveContent {
+        forRepository {
+            maven {
+                url = "https://repo.maven.apache.org/maven2/"
+            }
+        }
+        filter {
+            includeGroup "org.lwjgl"
+        }
+    }
 }
 
 dependencies {
@@ -44,44 +62,90 @@ dependencies {
 
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-    library "io.github.spair:imgui-java-binding:${project.imguiVersion}"
-    library("io.github.spair:imgui-java-lwjgl3:${project.imguiVersion}") {
+    // ======================================================================
+    // Bundled ("jar-in-jar") libraries
+    //
+    // Pattern used below for every library Krs ships inside its mod jar:
+    //   implementation / runtimeOnly  -> puts the dependency on the dev classpath
+    //   include                       -> nests the dependency inside the final mod
+    //                                    jar under META-INF/jars/ and registers it
+    //                                    in fabric.mod.json's "jars" list (Loom's
+    //                                    processIncludeJars task does both steps
+    //                                    automatically). Fabric Loader then adds the
+    //                                    nested jars to the runtime classpath, so
+    //                                    native libraries inside them are reachable
+    //                                    through ClassLoader.getResource().
+    //
+    // This replaces the old "library" configuration + manual zipTree() flattening,
+    // which was not the supported Loom mechanism and silently dropped native files.
+    // ======================================================================
+
+    // --- Dear ImGui (imgui-java) ------------------------------------------
+    // 1.87.7 is used instead of 1.86.11 because 1.86.11 ships an x86_64-only macOS
+    // native; since 1.87.0 the macOS native is a universal binary (x86_64 + arm64),
+    // so ImGui works on Apple Silicon too. The Java API used by Krs is unchanged.
+    implementation "io.github.spair:imgui-java-binding:${project.imguiVersion}"
+    include "io.github.spair:imgui-java-binding:${project.imguiVersion}"
+
+    // The LWJGL3 backend only needs LWJGL's GLFW/OpenGL bindings, which Minecraft
+    // 26.2 already provides (LWJGL 3.4.1). Exclude org.lwjgl so we never drag in a
+    // conflicting LWJGL version alongside Minecraft's own stack.
+    implementation("io.github.spair:imgui-java-lwjgl3:${project.imguiVersion}") {
+        exclude group: "org.lwjgl"
+    }
+    include("io.github.spair:imgui-java-lwjgl3:${project.imguiVersion}") {
         exclude group: "org.lwjgl"
     }
 
-    library "io.github.spair:imgui-java-natives-windows:${project.imguiVersion}"
-    library "io.github.spair:imgui-java-natives-linux:${project.imguiVersion}"
-    library "io.github.spair:imgui-java-natives-macos:${project.imguiVersion}"
-
-    library "org.apache.httpcomponents:httpclient:4.5.14"
-    library "org.json:json:20240303"
-    library "javazoom:jlayer:1.0.1"
-
-    // NanoVG dependencies
-    def lwjglVersion = "3.4.1"
-    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
-    implementation 'org.lwjgl:lwjgl-nanovg'
-    runtimeOnly 'org.lwjgl:lwjgl-nanovg::natives-windows'
-    runtimeOnly 'org.lwjgl:lwjgl-nanovg::natives-linux'
-    runtimeOnly 'org.lwjgl:lwjgl-nanovg::natives-macos'
-    library("org.lwjgl:lwjgl-nanovg:${lwjglVersion}") {
-        transitive = false
-    }
-    library("org.lwjgl:lwjgl-nanovg:${lwjglVersion}:natives-windows") {
-        transitive = false
-    }
-    library("org.lwjgl:lwjgl-nanovg:${lwjglVersion}:natives-linux") {
-        transitive = false
-    }
-    library("org.lwjgl:lwjgl-nanovg:${lwjglVersion}:natives-macos") {
-        transitive = false
+    // ImGui native binaries (one per OS). The macOS jar is a universal binary
+    // (x86_64 + arm64). Linux/Windows jars are x86_64-only upstream (no official
+    // ARM64 builds are published for imgui-java).
+    ["windows", "linux", "macos"].each { os ->
+        runtimeOnly "io.github.spair:imgui-java-natives-${os}:${project.imguiVersion}"
+        include "io.github.spair:imgui-java-natives-${os}:${project.imguiVersion}"
     }
 
-    // STB for font loading
-    implementation 'org.lwjgl:lwjgl-stb'
-    runtimeOnly 'org.lwjgl:lwjgl-stb::natives-windows'
-    runtimeOnly 'org.lwjgl:lwjgl-stb::natives-linux'
-    runtimeOnly 'org.lwjgl:lwjgl-stb::natives-macos'
+    // --- Other pure-Java libraries ----------------------------------------
+    implementation "org.apache.httpcomponents:httpclient:4.5.14"
+    include "org.apache.httpcomponents:httpclient:4.5.14"
+    implementation "org.json:json:20240303"
+    include "org.json:json:20240303"
+    implementation "javazoom:jlayer:1.0.1"
+    include "javazoom:jlayer:1.0.1"
+
+    // --- LWJGL NanoVG ------------------------------------------------------
+    // Minecraft 26.2 ships LWJGL 3.4.1 (verified against the official 26.2 version
+    // manifest: org.lwjgl:*:3.4.1). Minecraft does NOT ship lwjgl-nanovg, so Krs must
+    // bundle both the Java bindings and the native libraries, pinned to the exact
+    // same LWJGL version Minecraft uses so Java classes and native binaries can never
+    // mismatch.
+    implementation "org.lwjgl:lwjgl-nanovg:${project.lwjgl_version}"
+    include "org.lwjgl:lwjgl-nanovg:${project.lwjgl_version}"
+
+    // LWJGL 3.4.x native jars store binaries under <os>/<arch>/org/lwjgl/<module>/...
+    // and Library.loadSystem() looks them up with exactly that resource path, chosen
+    // from the *running* JVM's OS and architecture. Every platform/arch pair supported
+    // by LWJGL 3.4.1 must therefore be present, otherwise e.g. an Apple Silicon JVM
+    // fails with "Failed to locate library: liblwjgl_nanovg.dylib".
+    def lwjglNatives = [
+            "windows", "windows-arm64", "windows-x86",
+            "linux", "linux-arm64", "linux-arm32", "linux-ppc64le", "linux-riscv64",
+            "macos", "macos-arm64"
+    ]
+    lwjglNatives.each { classifier ->
+        runtimeOnly "org.lwjgl:lwjgl-nanovg:${project.lwjgl_version}:natives-${classifier}"
+        include "org.lwjgl:lwjgl-nanovg:${project.lwjgl_version}:natives-${classifier}"
+    }
+
+    // --- LWJGL STB ---------------------------------------------------------
+    // Minecraft 26.2 already ships lwjgl-stb 3.4.1 (classes + natives) for the
+    // platforms it supports, so Krs reuses those Java classes instead of bundling a
+    // second copy. We still bundle the STB natives for every LWJGL 3.4.1 platform so
+    // Krs also works on Linux ARM32/ARM64/PPC64LE/RISCV64 where Minecraft ships none.
+    lwjglNatives.each { classifier ->
+        runtimeOnly "org.lwjgl:lwjgl-stb:${project.lwjgl_version}:natives-${classifier}"
+        include "org.lwjgl:lwjgl-stb:${project.lwjgl_version}:natives-${classifier}"
+    }
 }
 
 tasks.withType(ProcessResources).configureEach {
@@ -125,8 +189,10 @@ jar {
         rename { "${it}_${project.archives_base_name}" }
     }
 
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from(configurations.library.collect { if (it.isDirectory()) it else zipTree(it) })
+    // NOTE: No manual zipTree() flattening here. Bundled libraries are nested via
+    // Loom's `include` configuration (see dependencies above); Loom's
+    // processIncludeJars task adds them under META-INF/jars/ and updates
+    // fabric.mod.json's "jars" list automatically.
 }
 
 // configure the maven publication
