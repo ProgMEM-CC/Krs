@@ -98,8 +98,8 @@ public class ModuleManager implements EventListener {
         ));
 
         devModules.addAll(List.of(
-                new BlockBreakSimulator2(), new Debugga(), new NoteBot(), new NoMoreAutism(), new ChatExcepChecker(),
-                new FukumaiPlayerTracker(), new MovementUtilTest(), new TuckMod(), new Sex()
+                new BlockBreakSimulator2(), new Debugga(), new NoteBot(), new ChatExcepChecker(),
+                new FukumaiPlayerTracker(), new MovementUtilTest(), new TuckMod()
         ));
 
         allModules.addAll(modules);
