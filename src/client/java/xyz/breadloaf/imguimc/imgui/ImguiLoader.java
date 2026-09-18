@@ -113,7 +113,7 @@ public class ImguiLoader {
         }
 
         fontAtlas.build();
-        imGuiGl3.updateFontsTexture();
+        imGuiGl3.createFontsTexture();
         fontLoaded = true;
         loadedFontScale = scale;
     }
@@ -232,7 +232,7 @@ public class ImguiLoader {
         ImGui.begin("imgui-mc docking host window", windowFlags);
 
         ImGui.dockSpace(Initializer.getDockId(), 0, 0, ImGuiDockNodeFlags.PassthruCentralNode |
-                ImGuiDockNodeFlags.NoCentralNode | ImGuiDockNodeFlags.NoDockingInCentralNode);
+                ImGuiDockNodeFlags.NoDockingOverCentralNode | ImGuiDockNodeFlags.NoDockingInCentralNode);
     }
 
     private static void finishDocking() {
@@ -390,7 +390,7 @@ public class ImguiLoader {
 
         if (imGuiGl3 != null) {
             try {
-                imGuiGl3.dispose();
+                imGuiGl3.shutdown();
             } catch (Throwable exception) {
                 LOGGER.warn("Failed to dispose the ImGui OpenGL backend", exception);
             } finally {
@@ -400,7 +400,7 @@ public class ImguiLoader {
 
         if (imGuiGlfw != null) {
             try {
-                imGuiGlfw.dispose();
+                imGuiGlfw.shutdown();
             } catch (Throwable exception) {
                 LOGGER.warn("Failed to dispose the ImGui GLFW backend", exception);
             } finally {
