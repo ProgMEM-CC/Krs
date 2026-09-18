@@ -4,6 +4,7 @@ import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.ImGuiStyle;
 import imgui.flag.ImGuiCol;
+import xyz.breadloaf.imguimc.imgui.ImguiLoader;
 
 final class KrsImGuiTheme {
 
@@ -172,8 +173,13 @@ final class KrsImGuiTheme {
     }
 
     private static float getScale() {
-        ImGuiIO io = ImGui.getIO();
-        float scale = Math.max(io.getDisplayFramebufferScaleX(), io.getDisplayFramebufferScaleY());
+        // Use the shared UI scale (the framebuffer scale the renderer itself uses to
+        // map ImGui units onto pixels) rather than the monitor content scale: with
+        // Dear ImGui 1.92 the content scale no longer matches how the backend sizes
+        // io.DisplaySize, and scaling layout by it draws the UI larger than the
+        // window. Reading it here keeps theme sizes in lockstep with the font size
+        // and style scaling applied in ImguiLoader.
+        float scale = ImguiLoader.getUiScale();
 
         if (!Float.isFinite(scale) || scale < 1.0f)
             return 1.0f;

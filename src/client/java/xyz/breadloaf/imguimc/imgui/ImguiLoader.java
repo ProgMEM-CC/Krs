@@ -92,6 +92,12 @@ public class ImguiLoader {
         String fontPath = FontExtractor.getFontPath("arial.ttf");
         float fontSize = Math.max(8.0f, Math.round(17.0f * scale));
 
+        // Dear ImGui 1.92 moved to a dynamic font system, but the Java GL3 binding
+        // is a legacy renderer (it never sets ImGuiBackendFlags.RendererHasTextures),
+        // so after changing the font atlas its GPU texture must be recreated by hand.
+        // Destroy the old texture first, otherwise the atlas keeps the stale texture
+        // id and every rebuild leaks an OpenGL texture.
+        imGuiGl3.destroyFontsTexture();
         fontAtlas.clear();
 
         ImFontConfig fontConfig = new ImFontConfig();
@@ -264,9 +270,17 @@ public class ImguiLoader {
     }
 
     private static void applyDisplayScale() {
-        float scale = getWindowContentScale();
+        float scale = getUiScale();
         ImGuiIO io = ImGui.getIO();
+
+        // Dear ImGui 1.92 changed how DPI scaling works. Its automatic paths
+        // (io.ConfigDpiScaleFonts / io.ConfigDpiScaleViewports) rely on the renderer
+        // advertising RendererHasTextures, which the Java GL3 binding does not do
+        // yet, so the scaling is applied manually here and both flags are forced
+        // off to stop core ImGui from rescaling on top of it.
         io.setFontGlobalScale(1.0f);
+        io.setConfigDpiScaleFonts(false);
+        io.setConfigDpiScaleViewports(false);
 
         if (customFontAvailable && (!fontLoaded || Math.abs(scale - loadedFontScale) > 0.01f)) {
             rebuildCustomFont(scale);
@@ -276,6 +290,28 @@ public class ImguiLoader {
             ImGui.getStyle().scaleAllSizes(scale / appliedUiScale);
             appliedUiScale = scale;
         }
+    }
+
+    /**
+     * Returns the scale factor between ImGui layout units and the pixels the GL3
+     * renderer actually fills, which is the framebuffer scale reported by the GLFW
+     * backend (window points vs framebuffer pixels). That is the only factor that
+     * keeps the layout inside the window: the renderer maps io.DisplaySize across
+     * DisplaySize x DisplayFramebufferScale pixels, so scaling anything by the
+     * monitor content scale instead (e.g. Windows 200% display scaling, where the
+     * framebuffer scale stays 1.0) lays the interface out larger than the window.
+     * All scale-sensitive code (font size, themes, style sizes) must use this
+     * instead of reading io.DisplayFramebufferScale directly, so every part of
+     * the UI scales by the same amount.
+     */
+    public static float getUiScale() {
+        float scale = Math.max(ImGui.getIO().getDisplayFramebufferScaleX(),
+                ImGui.getIO().getDisplayFramebufferScaleY());
+
+        if (!Float.isFinite(scale) || scale < 1.0f)
+            return 1.0f;
+
+        return scale;
     }
 
     private static float getWindowContentScale() {
