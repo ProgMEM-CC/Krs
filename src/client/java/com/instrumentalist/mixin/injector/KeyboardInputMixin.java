@@ -31,6 +31,7 @@ public abstract class KeyboardInputMixin {
         LookTP lookTP = ModuleManager.getModule(LookTP.class);
 
         if (lookTP != null && lookTP.shouldStopClientInput()) {
+            Scaffold.hookImportedInput(input, true);
             InputUtil.stop(input);
             MovementFix.updateInput(input);
             Scaffold.hookEdgeSafeSneakInput(input);
@@ -38,7 +39,9 @@ public abstract class KeyboardInputMixin {
         }
 
         if (!GuiInputBlocker.shouldBlockGameMovement()) {
+            Scaffold.hookImportedInput(input, false);
             MovementFix.updateInput(input);
+            Scaffold.finishImportedInput(input);
             Scaffold.hookEdgeSafeSneakInput(input);
             Velocity.hookJumpResetInput(input);
             Scaffold.hookTellyJumpInput(input);
@@ -47,6 +50,7 @@ public abstract class KeyboardInputMixin {
             return;
         }
 
+        Scaffold.hookImportedInput(input, true);
         GuiInputBlocker.releaseMovementKeys();
         InputUtil.stop(input);
         MovementFix.updateInput(input);

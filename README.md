@@ -12,6 +12,11 @@
 
 ![Krs Client Main Menu](epic/mainmenu.png)
 
+### Scaffold modes
+
+See [the Scaffold port notes](SCAFFOLD_PORT.md) for imported bridging/tower modes,
+configuration compatibility, build checks, and the in-game smoke-test checklist.
+
 ### Recommend Mods
 
 [Alt Manager (ADHD Reloginer) Mod](https://github.com/Aspw-w/ADHD-Reloginer)
