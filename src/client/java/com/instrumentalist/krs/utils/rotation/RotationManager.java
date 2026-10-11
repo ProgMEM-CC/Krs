@@ -1,5 +1,6 @@
 package com.instrumentalist.krs.utils.rotation;
 
+import com.instrumentalist.krs.hacks.features.player.Scaffold;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -36,6 +37,7 @@ public class RotationManager {
     private float renderHeadPitch;
     private long lastRotationUpdate = 0L;
     private boolean isRotating = false;
+    private boolean sourceQuantizedRotation;
     private boolean isReturning = false;
     private boolean returnFramePrepared = false;
     private boolean initialized = false;
@@ -127,6 +129,7 @@ public class RotationManager {
     }
 
     public void resetRotationsInstantly() {
+        sourceQuantizedRotation = false;
         isRotating = false;
         isReturning = false;
 
@@ -153,6 +156,7 @@ public class RotationManager {
     }
 
     public void setRotationsInstantly(float yaw, float pitch) {
+        sourceQuantizedRotation = false;
         ensureInitializedFromPlayer();
         updateRotations();
 
@@ -162,6 +166,7 @@ public class RotationManager {
     }
 
     public void syncWithServerRotation(float yaw, float pitch) {
+        sourceQuantizedRotation = false;
         ensureInitializedFromPlayer();
         updateRotations();
 
@@ -175,6 +180,23 @@ public class RotationManager {
 
     public void startRotation(float yaw, float pitch, float speed) {
         rotateToward(yaw, pitch, speed, true);
+    }
+
+    /** Raven Scaffold has already applied its own rotation grid and easing. */
+    public void startSourceRotation(float yaw, float pitch) {
+        if (!Float.isFinite(yaw) || !Float.isFinite(pitch) || !ensureInitializedFromPlayer()) return;
+        updateRotations();
+        clientYaw = yaw;
+        clientPitch = pitch;
+        lastRotationUpdate = System.nanoTime();
+        isRotating = true;
+        sourceQuantizedRotation = true;
+        isReturning = false;
+        returnFramePrepared = false;
+    }
+
+    public boolean isSourceQuantizedRotation() {
+        return isRotating && sourceQuantizedRotation;
     }
 
     public void startRotation(float yaw, float pitch, float yawSpeed, float pitchSpeed) {
@@ -398,6 +420,8 @@ public class RotationManager {
             return;
         }
 
+        sourceQuantizedRotation = false;
+
         float adjustedYawSpeed = Math.max(0.0f, yawSpeed);
         float adjustedPitchSpeed = Math.max(0.0f, pitchSpeed);
         float yawDiff = Mth.wrapDegrees(targetYaw - clientYaw);
@@ -608,6 +632,7 @@ public class RotationManager {
     }
 
     public Packet<?> normalizeOutgoingPacket(Packet<?> packet) {
+        if (Scaffold.ownsImportedRotations()) return packet;
         if (!ensureServerRotationInitialized()) {
             return packet;
         }
@@ -704,6 +729,7 @@ public class RotationManager {
     }
 
     private void beginReturnToPlayerRotation() {
+        sourceQuantizedRotation = false;
         isRotating = false;
         if (isReturning) {
             return;

@@ -7,6 +7,8 @@ import com.instrumentalist.krs.hacks.features.exploit.PortalScreen;
 import com.instrumentalist.krs.hacks.features.movement.*;
 import com.instrumentalist.krs.hacks.features.player.Phase;
 import com.instrumentalist.krs.hacks.features.player.Freecam;
+import com.instrumentalist.krs.hacks.features.player.Scaffold;
+import com.instrumentalist.krs.hacks.features.combat.Displace;
 import com.instrumentalist.krs.hacks.features.render.EntityYawFix;
 import com.instrumentalist.krs.utils.move.InputUtil;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
@@ -129,6 +131,7 @@ public abstract class ClientPlayerEntityMixin extends Player {
 
     @Inject(method = "aiStep", at = @At("HEAD"))
     private void freecamStopInput(CallbackInfo ci) {
+        Scaffold.preImportedUpdate();
         if (ModuleManager.getModuleState(Freecam.class) && Freecam.getCanFly())
             InputUtil.stop(this.input);
     }
@@ -283,8 +286,10 @@ public abstract class ClientPlayerEntityMixin extends Player {
 
             if (Client.eventManager != null) Client.eventManager.call(event);
             if (event.isCancelled()) return;
+            Displace.applyMotionRotation(event);
             boolean eventRotationChanged = event.yaw != vanillaYaw || event.pitch != vanillaPitch;
-            if (Client.rotationManager != null && (Client.rotationManager.isRotating() || eventRotationChanged)) {
+            if (Client.rotationManager != null && !Scaffold.ownsImportedRotations()
+                    && (Client.rotationManager.isRotating() || eventRotationChanged)) {
                 float[] fixedRotation = Client.rotationManager.normalizeRotation(event.yaw, event.pitch, this.yRotLast, this.xRotLast);
                 event.yaw = fixedRotation[0];
                 event.pitch = fixedRotation[1];

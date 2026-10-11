@@ -2,6 +2,8 @@ package com.instrumentalist.mixin.injector;
 
 import com.instrumentalist.krs.hacks.features.level.ItemDropChanger;
 import com.instrumentalist.krs.hacks.features.player.AirPlace;
+import com.instrumentalist.krs.hacks.features.player.Scaffold;
+import com.instrumentalist.krs.hacks.features.combat.Displace;
 import com.instrumentalist.krs.utils.IMinecraft;
 import com.instrumentalist.krs.Client;
 import com.instrumentalist.krs.events.features.HandleInputEvent;
@@ -134,6 +136,11 @@ public abstract class MinecraftClientMixin implements IMinecraft {
         }
     }
 
+    @Inject(method = "handleKeybinds", at = @At("HEAD"))
+    private void sourceScaffoldBeforeInteractions(CallbackInfo ci) {
+        Scaffold.beforeImportedInteract();
+    }
+
     @WrapWithCondition(method = "handleKeybinds", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;swing(Lnet/minecraft/world/InteractionHand;)V"))
     private boolean dropItemHook(LocalPlayer instance, InteractionHand hand) {
         return ItemDropChanger.hookDropItemSwing(hand);
@@ -141,6 +148,7 @@ public abstract class MinecraftClientMixin implements IMinecraft {
 
     @Inject(method = "setLevel", at = @At("HEAD"), cancellable = true)
     private void worldEvent(ClientLevel world, CallbackInfo ci) {
+        Displace.beforeWorldChange();
         if (Client.eventManager == null || !Client.eventManager.hasListeners(WorldEvent.class))
             return;
 
@@ -153,6 +161,7 @@ public abstract class MinecraftClientMixin implements IMinecraft {
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void tickEvent(CallbackInfo ci) {
         krs$syncAllowCursorChanges();
+        Displace.beforeGameTick();
 
         if (Client.eventManager == null || !Client.eventManager.hasListeners(TickEvent.class))
             return;

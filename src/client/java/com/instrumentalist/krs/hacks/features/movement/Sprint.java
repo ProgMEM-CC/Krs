@@ -151,7 +151,7 @@ public class Sprint extends Module {
                 && input != null
                 && !Scaffold.shouldSuppressTellyNormalJumpSprintHook()
                 && canStartSprintingLikeVanilla(player, input)
-                && (ignoreScaffoldNoSprint || !ModuleManager.getModuleState(Scaffold.class) || !Scaffold.noSprint.get())
+                && (ignoreScaffoldNoSprint || !ModuleManager.getModuleState(Scaffold.class) || Scaffold.isImportedMode() || !Scaffold.noSprint.get())
                 && (!wallCheck.get() || !player.horizontalCollision);
     }
 

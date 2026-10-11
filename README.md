@@ -12,10 +12,11 @@
 
 ![Krs Client Main Menu](epic/mainmenu.png)
 
-### Scaffold modes
+### Raven module ports
 
-See [the Scaffold port notes](SCAFFOLD_PORT.md) for imported bridging/tower modes,
-configuration compatibility, build checks, and the in-game smoke-test checklist.
+See [the Raven port notes](RAVEN_PORTS.md) for Scaffold, Displace and Chat Bypass,
+source-parity checks, native API adaptations and remaining verification limits.
+[Scaffold mode/settings details](SCAFFOLD_PORT.md) include the local-world checklist.
 
 ### Recommend Mods
 

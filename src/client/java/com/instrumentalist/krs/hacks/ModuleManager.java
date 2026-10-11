@@ -69,7 +69,7 @@ public class ModuleManager implements EventListener {
         modules.addAll(List.of(
                 new SpeedModule(), new FlyModule(), new ElytraFly(), new EntityControl(), new NoBreakCooldown(),
                 new Interface(), new KillAura(), new Backtrack(),
-                new SpinBot(), new BrandSpoofer(), new AntiBot(), new AutoPot(), new Criticals(),
+                new SpinBot(), new BrandSpoofer(), new AntiBot(), new AutoPot(), new Criticals(), new Displace(),
                 new Teams(), new Velocity(), new Phase(), new ServerCrasher(), new Spammer(),
                 new PerfectHorseJump(), new InventoryMove(), new Jesus(), new NoSlow(), new LongJump(),
                 new ChestStealer(), new FastLadder(), new InvManager(), new NoFall(), new AirPlace(),
@@ -81,7 +81,7 @@ public class ModuleManager implements EventListener {
                 new NoHurtCam(), new FastBow(), new FastEat(), new Zoom(), new PathFinder(),
                 new FastBreak(), new ViewModel(), new EntityDesync(), new Step(), new AntiVoid(),
                 new AutoFish(), new NoJumpCooldown(), new AlwaysRiptide(),
-                new WorldTime(), new ChatCommands(), new Rotations(),
+                new WorldTime(), new ChatCommands(), new ChatBypass(), new Rotations(),
                 new PluginsDetector(), new NameTags(), new ESP(), new PlayerIndicator(), new MovementFix(), new LongThrow(),
                 new MaceExploit(), new NoPush(), new LookTP(),
                 new AntiCheatDetector(), new HackerDetector(), new PackSpoofer(),

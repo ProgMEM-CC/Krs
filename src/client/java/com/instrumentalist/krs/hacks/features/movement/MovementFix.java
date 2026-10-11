@@ -4,6 +4,8 @@ import com.instrumentalist.krs.Client;
 import com.instrumentalist.krs.hacks.Module;
 import com.instrumentalist.krs.hacks.ModuleCategory;
 import com.instrumentalist.krs.hacks.ModuleManager;
+import com.instrumentalist.krs.hacks.features.combat.Displace;
+import com.instrumentalist.krs.hacks.features.player.Scaffold;
 import com.instrumentalist.krs.utils.move.InputUtil;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
@@ -36,11 +38,12 @@ public class MovementFix extends Module {
         if (!shouldFixMovement())
             return mc.player != null ? mc.player.getYRot() : 0.0f;
 
-        return Client.rotationManager.getRotationYaw();
+        float yaw = Client.rotationManager != null ? Client.rotationManager.getRotationYaw() : mc.player.getYRot();
+        return Displace.movementYaw(yaw);
     }
 
     public static float getMovementPitch() {
-        if (!shouldFixMovement())
+        if (!shouldFixMovement() || Client.rotationManager == null || !Client.rotationManager.isRotating())
             return mc.player != null ? mc.player.getXRot() : 0.0f;
 
         return Client.rotationManager.getRotationPitch();
@@ -66,7 +69,7 @@ public class MovementFix extends Module {
         sprintConditionOverridden = false;
 
         if (shouldUseRotationFix()) {
-            float rotationYaw = Client.rotationManager.getRotationYaw();
+            float rotationYaw = getMovementYaw();
 
             movementInput = fixStrafeInput(rawInput, rotationYaw);
 
@@ -104,11 +107,19 @@ public class MovementFix extends Module {
     }
 
     private static boolean shouldUseRotationFix() {
-        return ModuleManager.getModuleState(MovementFix.class) && Client.rotationManager != null && Client.rotationManager.isRotating() && mc.player != null;
+        if (mc.player == null) return false;
+        // Raven's temporary force flag does not change the user's Movement Fix setting.
+        // Displace is the source's LOWEST rotation listener and has final yaw ownership.
+        if (Displace.shouldForceMovementFix()) return true;
+        if (Scaffold.bypassesImportedMovementFix()) return false;
+        return (Scaffold.forcesImportedMovementFix() || ModuleManager.getModuleState(MovementFix.class))
+                && Client.rotationManager != null && Client.rotationManager.isRotating();
     }
 
     private static boolean isSprintCorrectionEnabled() {
-        return ModuleManager.getModuleState(MovementFix.class) && mc.player != null;
+        return mc.player != null && (Displace.shouldForceMovementFix()
+                || !Scaffold.bypassesImportedMovementFix()
+                && (Scaffold.forcesImportedMovementFix() || ModuleManager.getModuleState(MovementFix.class)));
     }
 
     private static Input fixStrafeInput(Input input, float targetYaw) {

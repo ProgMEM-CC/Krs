@@ -3,8 +3,6 @@ package com.instrumentalist.krs.hacks.features.player;
 import com.instrumentalist.krs.hacks.Module;
 import com.instrumentalist.krs.utils.value.ListValue;
 import com.instrumentalist.krs.utils.value.SettingValue;
-import net.minecraft.world.entity.player.Input;
-import net.minecraft.world.phys.Vec3;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,7 +20,9 @@ public final class ScaffoldModeTest {
         checkCatalogs();
         checkSettings();
         checkConfigRoundTrip();
-        checkInputMath();
+        checkSourceMathBoundary();
+        RavenSourceParityTest.run();
+        RavenMixinContractTest.run();
         System.out.println("Scaffold mode checks passed: " + checks);
     }
 
@@ -89,7 +89,11 @@ public final class ScaffoldModeTest {
             require(registered.contains(field.get(null)), "Source setting is actually persisted/exposed: " + field.getName());
             sourceSettings++;
         }
-        require(sourceSettings == 35, "All 35 imported behavior settings are registered");
+        require(sourceSettings == 41, "All 41 imported behavior settings are registered");
+        for (var binding : ScaffoldModeController.modeKeybinds)
+            require(registered.contains(binding), "Source mode key is registered: " + binding.name);
+        for (var binding : ScaffoldModeController.keepYKeybinds)
+            require(registered.contains(binding), "Source KeepY key is registered: " + binding.name);
         checkOptions(ScaffoldModeController.keepY, "Off", "Telly A", "Telly B");
         checkOptions(ScaffoldModeController.sourceScaffoldMode, "Normal", "Telly", "Hypixel", "Breezily", "God Bridge");
         checkOptions(ScaffoldModeController.sourceSprintMode, "None", "Vanilla", "Legit", "NCP", "Universal");
@@ -148,38 +152,15 @@ public final class ScaffoldModeTest {
         if (!condition) throw new AssertionError(message);
     }
 
-    private static void checkInputMath() throws Exception {
-        Method yaw = ScaffoldModeController.class.getDeclaredMethod("inputYaw", float.class, float.class, float.class);
-        Method vector = ScaffoldModeController.class.getDeclaredMethod("direction", float.class);
-        Method moving = ScaffoldModeController.class.getDeclaredMethod("moving", Input.class);
-        Method flags = ScaffoldModeController.class.getDeclaredMethod("flags", Input.class, boolean.class, boolean.class, boolean.class);
-        Method direction = ScaffoldModeController.class.getDeclaredMethod("directionalInput", Input.class, float.class, float.class);
-        for (Method method : new Method[]{yaw, vector, moving, flags, direction}) method.setAccessible(true);
-
-        for (float camera : new float[]{0, 90, 179, -179, 360}) {
-            for (int forward = -1; forward <= 1; forward++) {
-                for (int left = -1; left <= 1; left++) {
-                    if (forward == 0 && left == 0) continue;
-                    float heading = (float) yaw.invoke(null, camera, (float) forward, (float) left);
-                    Vec3 actual = (Vec3) vector.invoke(null, heading);
-                    double radians = Math.toRadians(camera);
-                    double length = Math.hypot(forward, left);
-                    double expectedX = (left * Math.cos(radians) - forward * Math.sin(radians)) / length;
-                    double expectedZ = (forward * Math.cos(radians) + left * Math.sin(radians)) / length;
-                    require(Math.abs(actual.x - expectedX) < 1e-6 && Math.abs(actual.z - expectedZ) < 1e-6,
-                            "Correct camera-relative movement for " + camera + "/" + forward + "/" + left);
-                }
-            }
+    private static void checkSourceMathBoundary() {
+        require(new RavenScaffoldAdapter.Setting(ScaffoldModeController.hopSpeed).getInput() == 1.08D,
+                "Raven double slider value does not inherit widened KRS float noise");
+        for (double value : new double[]{-64.01, -1, -0.01, 0, 0.99, 384.01})
+            require(RavenScaffoldAdapter.MathHelper.floor_double(value) == (int) Math.floor(value), "Legacy floor " + value);
+        for (float value : new float[]{-721, -360, -180, -179, 0, 180, 360, 721}) {
+            float wrapped = RavenScaffoldAdapter.MathHelper.wrapAngleTo180_float(value);
+            require(wrapped >= -180 && wrapped < 180, "Legacy yaw range " + value);
+            require((value - wrapped) % 360 == 0, "Legacy yaw wrap " + value);
         }
-        Input opposed = new Input(true, true, true, true, false, false, false);
-        require(!(boolean) moving.invoke(null, opposed), "Opposing keys cancel rather than activating a hop");
-        require(!(boolean) moving.invoke(null, Input.EMPTY), "No automatic movement on empty input");
-        Input raw = new Input(true, false, true, false, true, false, true);
-        Input changed = (Input) flags.invoke(null, raw, false, true, false);
-        require(changed.forward() && changed.left() && !changed.backward() && !changed.right(), "Sneak/sprint overrides preserve direction");
-        require(!changed.jump() && changed.shift() && !changed.sprint(), "Jump and sprint suppression are reflected in input");
-        Input weave = (Input) direction.invoke(null, raw, 1f, -0.62f);
-        require(weave.forward() && weave.right() && !weave.left() && !weave.backward(), "Fractional weave signs are preserved");
-        require(weave.jump() && !weave.shift() && weave.sprint(), "Weave does not discard physical action keys");
     }
 }

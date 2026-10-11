@@ -155,6 +155,7 @@ tasks.register('scaffoldModeTest', JavaExec) {
     dependsOn tasks.named('scaffoldTestClasses')
     classpath = sourceSets.scaffoldTest.runtimeClasspath
     mainClass = 'com.instrumentalist.krs.hacks.features.player.ScaffoldModeTest'
+    systemProperty 'krs.referenceRoot', project.projectDir.absolutePath
     // Minecraft's logging classes may initialize during config construction.
     // Keep generated logs in ignored build output, never in the project root.
     workingDir = layout.buildDirectory.dir('scaffold-test-run').get().asFile
