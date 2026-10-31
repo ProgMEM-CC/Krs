@@ -54,6 +54,7 @@
     "LivingEntityMixin",
     "LivingEntityRendererMixin",
     "LocalPlayerInputAccessor",
+    "LocalPlayerPositionAccessor",
     "LocalPlayerSprintAccessor",
     "MinecraftClientMixin",
     "ModelFeatureRendererMixin",

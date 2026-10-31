@@ -19,6 +19,7 @@ import com.instrumentalist.krs.utils.value.*;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiChildFlags;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiInputTextFlags;
 import imgui.type.ImInt;
@@ -150,7 +151,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderCategoryModules(ModuleCategory category) {
-        if (imgui.ImGui.beginChild("ModuleList##" + category.name(), 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("ModuleList##" + category.name(), 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             for (Module module : ModuleManager.allModules) {
                 if (module.moduleCategory != category) continue;
                 renderModuleEntry(module);
@@ -160,7 +161,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderSearchModules() {
-        if (imgui.ImGui.beginChild("SearchPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("SearchPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             imgui.ImGui.text("Search Modules:");
             imgui.ImGui.inputText("Search", searchQuery);
 
@@ -176,7 +177,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
             imgui.ImGui.text("Matches: " + searchResults.size());
             imgui.ImGui.spacing();
 
-            if (imgui.ImGui.beginChild("SearchResults", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+            if (imgui.ImGui.beginChild("SearchResults", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                 for (Module module : searchResults)
                     renderModuleEntry(module);
             }
@@ -244,7 +245,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderCommandTab() {
-        if (imgui.ImGui.beginChild("CommandPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("CommandPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             imgui.ImGui.text("Command Execution");
 
             if (commandLogs.isEmpty()) {
@@ -264,7 +265,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
             imgui.ImGui.separator();
             imgui.ImGui.spacing();
 
-            if (imgui.ImGui.beginChild("LogWindow", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+            if (imgui.ImGui.beginChild("LogWindow", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                 for (String log : commandLogs)
                     imgui.ImGui.textWrapped(log);
 
@@ -277,14 +278,14 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private static void renderMultiPlayTab() {
-        if (imgui.ImGui.beginChild("MultiPlayPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("MultiPlayPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             if (imgui.ImGui.button("Force disconnect from server")) {
                 if (mc.level != null)
                     mc.level.disconnect(Component.literal("Disconnected"));
             }
 
                 imgui.ImGui.text("Player List");
-            if (imgui.ImGui.beginChild("PlayerList", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+            if (imgui.ImGui.beginChild("PlayerList", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                 if (mc.level != null && mc.getConnection() != null) {
                     List<AbstractClientPlayer> sortedPlayerEntities = new ArrayList<>(mc.level.players());
                     sortedPlayerEntities.sort(Comparator.comparing(player -> player.getName().getString(), String.CASE_INSENSITIVE_ORDER));
@@ -354,7 +355,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderModuleConfigsTab() {
-        if (imgui.ImGui.beginChild("ModuleConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("ModuleConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             imgui.ImGui.text("Create a new Module Config:");
             if (imgui.ImGui.inputText("New Config Name", newModuleConfigName, ImGuiInputTextFlags.EnterReturnsTrue)) {
                 String configName = newModuleConfigName.get();
@@ -372,7 +373,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
             fillSortedConfigs(moduleConfigScratch, FileUtil.INSTANCE.getModuleFiles());
             if (!moduleConfigScratch.isEmpty()) {
                 imgui.ImGui.text("Available Module Configs:");
-                if (imgui.ImGui.beginChild("ModuleConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+                if (imgui.ImGui.beginChild("ModuleConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                     for (Path config : moduleConfigScratch) {
                         String configName = configName(config);
                         String showConfigName = configName.equalsIgnoreCase(Client.configManager.configCurrent) ? configName + " <- Current" : configName;
@@ -394,7 +395,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderBindConfigsTab() {
-        if (imgui.ImGui.beginChild("BindConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("BindConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             imgui.ImGui.text("Create a new Bind Config:");
             if (imgui.ImGui.inputText("New Config Name", newBindConfigName, ImGuiInputTextFlags.EnterReturnsTrue)) {
                 String configName = newBindConfigName.get();
@@ -412,7 +413,7 @@ public class ModuleRenderable implements Renderable, IMinecraft {
             fillSortedConfigs(bindConfigScratch, FileUtil.INSTANCE.getBindFiles());
             if (!bindConfigScratch.isEmpty()) {
                 imgui.ImGui.text("Available Bind Configs:");
-                if (imgui.ImGui.beginChild("BindConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+                if (imgui.ImGui.beginChild("BindConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                     for (Path config : bindConfigScratch) {
                         String configName = configName(config);
                         String showConfigName = configName.equalsIgnoreCase(Client.configManager.bindCurrent) ? configName + " <- Current" : configName;
@@ -434,11 +435,11 @@ public class ModuleRenderable implements Renderable, IMinecraft {
     }
 
     private void renderOnlineConfigsTab() {
-        if (imgui.ImGui.beginChild("OnlineConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), false)) {
+        if (imgui.ImGui.beginChild("OnlineConfigsPanel", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.None)) {
             List<String> moduleConfigs = FileUtil.INSTANCE.getOnlineCfgs();
             if (!moduleConfigs.isEmpty()) {
                 imgui.ImGui.text("Available Online Configs:");
-                if (imgui.ImGui.beginChild("OnlineConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), true)) {
+                if (imgui.ImGui.beginChild("OnlineConfigsList", 0, imgui.ImGui.getContentRegionAvailY(), ImGuiChildFlags.Borders)) {
                     for (String config : moduleConfigs) {
                         String configName = config.replace(".json", "");
 

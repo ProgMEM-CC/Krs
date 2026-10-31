@@ -1,6 +1,7 @@
 package com.instrumentalist.mixin;
 
 import com.instrumentalist.krs.Client;
+import com.instrumentalist.krs.hacks.features.exploit.disabler.features.MinibloxMovePayload;
 import imgui.ImGui;
 import net.fabricmc.api.ClientModInitializer;
 import xyz.breadloaf.imguimc.interfaces.Renderable;
@@ -13,6 +14,7 @@ public class Initializer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        MinibloxMovePayload.register();
         Client.mixinInitializeHook();
     }
 

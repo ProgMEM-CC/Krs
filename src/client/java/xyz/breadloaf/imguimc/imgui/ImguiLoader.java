@@ -7,17 +7,14 @@ import imgui.*;
 import imgui.flag.*;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL33;
-import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 import xyz.breadloaf.imguimc.font.FontExtractor;
 import xyz.breadloaf.imguimc.interfaces.Renderable;
 import xyz.breadloaf.imguimc.interfaces.Theme;
 import java.io.IOException;
-import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,16 +23,16 @@ import static org.lwjgl.glfw.GLFW.glfwMakeContextCurrent;
 
 public class ImguiLoader {
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final long CONTENT_SCALE_REFRESH_INTERVAL_NANOS = 250_000_000L;
+    private static final long FRAMEBUFFER_SCALE_REFRESH_INTERVAL_NANOS = 250_000_000L;
+    private static final float BASE_FONT_SIZE = 17.0f;
 
     private static ImGuiImplGlfw imGuiGlfw = null;
     private static ImGuiImplGl3 imGuiGl3 = null;
 
     private static long windowHandle;
-    private static float appliedUiScale = 1.0f;
     private static float loadedFontScale = -1.0f;
-    private static float cachedWindowContentScale = 1.0f;
-    private static long lastContentScaleRefreshNanos;
+    private static float cachedFramebufferScale = 1.0f;
+    private static long lastFramebufferScaleRefreshNanos;
     private static long lastFrameFailureLogNanos;
     private static final Map<Class<?>, Long> componentFailureLogTimes = new HashMap<>();
 
@@ -78,7 +75,6 @@ public class ImguiLoader {
             imGuiGlfw.init(handle,true);
             imGuiGl3 = new ImGuiImplGl3();
             imGuiGl3.init();
-            applyDisplayScale();
             initialized = true;
         } catch (RuntimeException | Error error) {
             shutdown();
@@ -90,30 +86,41 @@ public class ImguiLoader {
         ImGuiIO io = ImGui.getIO();
         ImFontAtlas fontAtlas = io.getFonts();
         String fontPath = FontExtractor.getFontPath("Arial.ttf");
-        float fontSize = Math.max(8.0f, Math.round(17.0f * scale));
 
+        // imgui-java 1.92 uses the backend's normal frame lifecycle to upload the
+        // rebuilt atlas. Destroy the old legacy texture first so a DPI change does
+        // not leak one OpenGL texture per rebuild.
+        imGuiGl3.destroyFontsTexture();
         fontAtlas.clear();
 
         ImFontConfig fontConfig = new ImFontConfig();
         try {
             fontConfig.setPixelSnapH(true);
-            fontConfig.setOversampleH(3);
-            fontConfig.setOversampleV(2);
+            // Keep the font at its logical UI size. Retina density belongs in
+            // rasterization, not in ImGui's logical layout coordinates.
+            fontConfig.setRasterizerDensity(scale);
 
-            ImFont customFont = fontAtlas.addFontFromFileTTF(fontPath, fontSize, fontConfig);
+            ImFont customFont = fontAtlas.addFontFromFileTTF(fontPath, BASE_FONT_SIZE, fontConfig);
             if (customFont != null && customFont.isValidPtr()) {
                 io.setFontDefault(customFont);
             } else {
                 customFontAvailable = false;
-                io.setFontDefault(fontAtlas.addFontDefault());
+                ImFontConfig defaultFontConfig = new ImFontConfig();
+                try {
+                    defaultFontConfig.setRasterizerDensity(scale);
+                    io.setFontDefault(fontAtlas.addFontDefault(defaultFontConfig));
+                } finally {
+                    defaultFontConfig.destroy();
+                }
                 LOGGER.warn("Could not load the custom ImGui font {}; using the default font", fontPath);
             }
         } finally {
             fontConfig.destroy();
         }
 
-        fontAtlas.build();
-        imGuiGl3.updateFontsTexture();
+        // The 1.92 OpenGL backend builds/uploads the legacy atlas from newFrame().
+        // Building here would only duplicate that work and makes DPI rebuilds
+        // depend on the obsolete pre-1.92 upload sequence.
         fontLoaded = true;
         loadedFontScale = scale;
     }
@@ -149,8 +156,12 @@ public class ImguiLoader {
 
         boolean frameStarted = false;
         try {
-            applyDisplayScale();
             imGuiGlfw.newFrame();
+            // The 1.92 GLFW backend updates DisplayFramebufferScale here. Read
+            // that value before rebuilding fonts so Retina macOS windows use
+            // the same DPI source as the renderer backend.
+            applyDisplayScale();
+            imGuiGl3.newFrame();
             ImGui.newFrame();
             frameStarted = true;
 
@@ -232,7 +243,7 @@ public class ImguiLoader {
         ImGui.begin("imgui-mc docking host window", windowFlags);
 
         ImGui.dockSpace(Initializer.getDockId(), 0, 0, ImGuiDockNodeFlags.PassthruCentralNode |
-                ImGuiDockNodeFlags.NoCentralNode | ImGuiDockNodeFlags.NoDockingInCentralNode);
+                ImGuiDockNodeFlags.NoDockingOverCentralNode);
     }
 
     private static void finishDocking() {
@@ -264,43 +275,32 @@ public class ImguiLoader {
     }
 
     private static void applyDisplayScale() {
-        float scale = getWindowContentScale();
-        ImGuiIO io = ImGui.getIO();
-        io.setFontGlobalScale(1.0f);
+        float scale = getFramebufferScale();
 
         if (customFontAvailable && (!fontLoaded || Math.abs(scale - loadedFontScale) > 0.01f)) {
             rebuildCustomFont(scale);
         }
 
-        if (Math.abs(scale - appliedUiScale) > 0.01f) {
-            ImGui.getStyle().scaleAllSizes(scale / appliedUiScale);
-            appliedUiScale = scale;
-        }
+        // Do not scale style values by framebuffer density. Dear ImGui sizes are
+        // logical units; the OpenGL backend applies DisplayFramebufferScale when
+        // rendering them to Retina/high-DPI framebuffers.
     }
 
-    private static float getWindowContentScale() {
+    private static float getFramebufferScale() {
         long now = System.nanoTime();
-        if (lastContentScaleRefreshNanos != 0L
-                && now - lastContentScaleRefreshNanos < CONTENT_SCALE_REFRESH_INTERVAL_NANOS)
-            return cachedWindowContentScale;
+        if (lastFramebufferScaleRefreshNanos != 0L
+                && now - lastFramebufferScaleRefreshNanos < FRAMEBUFFER_SCALE_REFRESH_INTERVAL_NANOS)
+            return cachedFramebufferScale;
 
-        float scale = 1.0f;
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            FloatBuffer xScale = stack.mallocFloat(1);
-            FloatBuffer yScale = stack.mallocFloat(1);
-            GLFW.glfwGetWindowContentScale(windowHandle, xScale, yScale);
-            scale = Math.max(xScale.get(0), yScale.get(0));
-        } catch (Throwable ignored) {
-            scale = 1.0f;
-        }
+        ImGuiIO io = ImGui.getIO();
+        float scale = Math.max(io.getDisplayFramebufferScaleX(), io.getDisplayFramebufferScaleY());
 
         if (!Float.isFinite(scale) || scale <= 0.0f)
             scale = 1.0f;
 
-        cachedWindowContentScale = Math.max(1.0f, scale);
-        lastContentScaleRefreshNanos = now;
-        return cachedWindowContentScale;
+        cachedFramebufferScale = Math.max(1.0f, scale);
+        lastFramebufferScaleRefreshNanos = now;
+        return cachedFramebufferScale;
     }
 
     private static void endFrame(long windowPtr) {
@@ -381,16 +381,15 @@ public class ImguiLoader {
         customFontAvailable = false;
         renderedComponentsLastFrame = false;
         loadedFontScale = -1.0f;
-        appliedUiScale = 1.0f;
-        cachedWindowContentScale = 1.0f;
-        lastContentScaleRefreshNanos = 0L;
+        cachedFramebufferScale = 1.0f;
+        lastFramebufferScaleRefreshNanos = 0L;
         lastFrameFailureLogNanos = 0L;
         componentFailureLogTimes.clear();
         windowHandle = 0L;
 
         if (imGuiGl3 != null) {
             try {
-                imGuiGl3.dispose();
+                imGuiGl3.shutdown();
             } catch (Throwable exception) {
                 LOGGER.warn("Failed to dispose the ImGui OpenGL backend", exception);
             } finally {
@@ -400,7 +399,7 @@ public class ImguiLoader {
 
         if (imGuiGlfw != null) {
             try {
-                imGuiGlfw.dispose();
+                imGuiGlfw.shutdown();
             } catch (Throwable exception) {
                 LOGGER.warn("Failed to dispose the ImGui GLFW backend", exception);
             } finally {
