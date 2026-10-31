@@ -11,6 +11,7 @@ import com.instrumentalist.krs.events.features.HandleInputEvent;
 import com.instrumentalist.krs.events.features.TickEvent;
 import com.instrumentalist.krs.events.features.WorldEvent;
 import com.instrumentalist.krs.hacks.ModuleManager;
+import com.instrumentalist.krs.hacks.features.level.NoPlaceCooldown;
 import com.instrumentalist.krs.hacks.features.render.ViewModel;
 import com.instrumentalist.krs.screen.CustomTitleScreen;
 import com.instrumentalist.krs.utils.entity.PlayerUtil;
@@ -24,6 +25,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.llamalad7.mixinextras.injector.WrapWithCondition;
 
@@ -56,6 +59,8 @@ public abstract class MinecraftClientMixin implements IMinecraft {
     @Shadow @Final public ParticleEngine particleEngine;
 
     @Shadow public Options options;
+
+    @Shadow private int rightClickDelay;
 
     @Shadow public abstract Window getWindow();
 
@@ -145,6 +150,14 @@ public abstract class MinecraftClientMixin implements IMinecraft {
     @WrapWithCondition(method = "handleKeybinds", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;swing(Lnet/minecraft/world/InteractionHand;)V"))
     private boolean dropItemHook(LocalPlayer instance, InteractionHand hand) {
         return ItemDropChanger.hookDropItemSwing(hand);
+    }
+
+    @Redirect(method = "handleKeybinds", at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;rightClickDelay:I", opcode = Opcodes.GETFIELD, ordinal = 0))
+    private int noPlaceCooldown(Minecraft minecraft) {
+        if (ModuleManager.getModuleState(NoPlaceCooldown.class))
+            return 0;
+
+        return this.rightClickDelay;
     }
     @Inject(method = "setLevel", at = @At("HEAD"), cancellable = true)
     private void worldEvent(ClientLevel world, CallbackInfo ci) {
