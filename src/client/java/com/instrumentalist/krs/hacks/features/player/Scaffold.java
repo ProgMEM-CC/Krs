@@ -2,8 +2,12 @@ package com.instrumentalist.krs.hacks.features.player;
 
 import com.instrumentalist.krs.Client;
 import com.instrumentalist.krs.events.features.BlockEdgeEvent;
+import com.instrumentalist.krs.events.features.MotionEvent;
 import com.instrumentalist.krs.events.features.TickEvent;
 import com.instrumentalist.krs.events.features.UpdateEvent;
+import com.instrumentalist.krs.events.features.WorldEvent;
+import com.instrumentalist.krs.events.features.SendPacketEvent;
+import com.instrumentalist.krs.events.features.MouseClickEvent;
 import com.instrumentalist.krs.hacks.Module;
 import com.instrumentalist.krs.hacks.ModuleCategory;
 import com.instrumentalist.krs.hacks.ModuleManager;
@@ -11,6 +15,7 @@ import com.instrumentalist.krs.hacks.features.movement.MovementFix;
 import com.instrumentalist.krs.hacks.features.movement.speed.SpeedModule;
 import com.instrumentalist.krs.hacks.features.movement.Sprint;
 import com.instrumentalist.krs.utils.entity.PlayerUtil;
+import com.instrumentalist.krs.utils.GuiInputBlocker;
 import com.instrumentalist.krs.utils.math.BehaviorUtils;
 import com.instrumentalist.krs.utils.math.RandomUtil;
 import com.instrumentalist.krs.utils.math.RotationScraper;
@@ -23,6 +28,7 @@ import com.instrumentalist.krs.utils.value.BooleanValue;
 import com.instrumentalist.krs.utils.value.FloatValue;
 import com.instrumentalist.krs.utils.value.IntValue;
 import com.instrumentalist.krs.utils.value.ListValue;
+import com.instrumentalist.krs.utils.value.KeyBindValue;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -44,6 +50,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.player.ClientInput;
 import com.instrumentalist.krs.utils.input.Keys;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.multiplayer.ClientLevel;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -78,7 +86,7 @@ public class Scaffold extends Module {
     private static final int MATH_FACE_SAMPLE_DIVISIONS = 16;
 
     @Setting
-    private static final ListValue mode = new ListValue("Mode", new String[]{"Normal", "Telly"}, "Normal");
+    private static final ListValue mode = new ListValue("Mode", scaffoldModes(), "Normal");
 
     @Setting
     private static final ListValue swingOrderMode = new ListValue("Swing Order Mode", new String[]{"Normal", "Packet"}, "Packet");
@@ -87,22 +95,22 @@ public class Scaffold extends Module {
     private static final BooleanValue tower = new BooleanValue("Tower", true);
 
     @Setting
-    private static final BooleanValue towerCenter = new BooleanValue("Tower Center", false, tower::get);
+    private static final BooleanValue towerCenter = new BooleanValue("Tower Center", false, () -> tower.get() && !isImportedMode());
 
     @Setting
-    private static final ListValue towerWhen = new ListValue("Tower When", new String[]{"Always", "Moving", "Standing"}, "Always", tower::get);
+    private static final ListValue towerWhen = new ListValue("Tower When", new String[]{"Always", "Moving", "Standing"}, "Always", () -> tower.get() && !isImportedMode());
 
     @Setting
-    private static final ListValue towerMode = new ListValue("Tower Mode", new String[]{"Vanilla", "NCP", "Hypixel"}, "Vanilla", tower::get);
+    private static final ListValue towerMode = new ListValue("Tower Mode", towerModes(), "Vanilla", tower::get);
 
     @Setting
-    private static final FloatValue towerSpeed = new FloatValue("Tower Speed", 1f, 0.1f, 1f, () -> tower.get() && towerMode.get().equalsIgnoreCase("vanilla"));
+    private static final FloatValue towerSpeed = new FloatValue("Tower Speed", 1f, 0.1f, 1f, () -> !isImportedMode() && tower.get() && towerMode.get().equalsIgnoreCase("vanilla"));
 
     @Setting
     private static final ListValue tellyMode = new ListValue("Telly Mode", new String[]{"Normal", "Non Upwards"}, "Normal", Scaffold::canDisplayTellyMode);
 
     @Setting
-    public static final ListValue rotationMode = new ListValue("Rotation Mode", new String[]{"Math", "Simple", "Backwards", "None"}, "Math");
+    public static final ListValue rotationMode = new ListValue("Rotation Mode", new String[]{"Math", "Simple", "Backwards", "None"}, "Math", () -> !isImportedMode());
 
     @Setting
     private static final FloatValue maxRotationSpeed = new FloatValue("Max Rotation Speed", 60f, 0f, 180f, Scaffold::usesRotationSpeed);
@@ -117,10 +125,10 @@ public class Scaffold extends Module {
     private static final FloatValue preRotationLead = new FloatValue("Pre Rotation Lead", 1.0f, 0.0f, 5.0f, Scaffold::usesMathPreRotation);
 
     @Setting
-    private static final BooleanValue snapRotation = new BooleanValue("Snap Rotation", false, () -> rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple"));
+    private static final BooleanValue snapRotation = new BooleanValue("Snap Rotation", false, () -> !isImportedMode() && (rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple")));
 
     @Setting
-    private static final BooleanValue noPlaceWhenSnapping = new BooleanValue("No Place when Snapping", false, () -> (rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple")) && snapRotation.get());
+    private static final BooleanValue noPlaceWhenSnapping = new BooleanValue("No Place when Snapping", false, () -> !isImportedMode() && (rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple")) && snapRotation.get());
 
     @Setting
     private static final BooleanValue noHitCheck = new BooleanValue("No Hit Check", false, Scaffold::hasNoHitCheckOption);
@@ -129,34 +137,100 @@ public class Scaffold extends Module {
     private static final BooleanValue tellyAfterPlaceNoHitCheck = new BooleanValue("Telly After Place No Hit Check", false, Scaffold::canDisplayTellyAfterPlaceNoHitCheck);
 
     @Setting
-    private static final IntValue searchRange = new IntValue("Search Range", 2, 0, 5, "m");
+    private static final IntValue searchRange = new IntValue("Search Range", 2, 0, 5, "m", () -> !isImportedMode());
 
     @Setting
-    private static final BooleanValue customTimer = new BooleanValue("Custom Timer", false);
+    private static final BooleanValue customTimer = new BooleanValue("Custom Timer", false, () -> !isImportedMode());
 
     @Setting
-    private static final FloatValue towerTimerSpeed = new FloatValue("Tower Timer Speed", 1.5f, 0.1f, 10f, "x", () -> customTimer.get() && tower.get());
+    private static final FloatValue towerTimerSpeed = new FloatValue("Tower Timer Speed", 1.5f, 0.1f, 10f, "x", () -> !isImportedMode() && customTimer.get() && tower.get());
 
     @Setting
-    private static final FloatValue normalTimerSpeed = new FloatValue("Normal Timer Speed", 1.5f, 0.1f, 10f, "x", customTimer::get);
+    private static final FloatValue normalTimerSpeed = new FloatValue("Normal Timer Speed", 1.5f, 0.1f, 10f, "x", () -> !isImportedMode() && customTimer.get());
 
     @Setting
-    private static final BooleanValue keepY = new BooleanValue("KeepY", true);
+    private static final BooleanValue keepY = new BooleanValue("KeepY", true, () -> !isImportedMode());
 
     @Setting
-    private static final BooleanValue keepYOnlySpeed = new BooleanValue("KeepY Only Speed", true, keepY::get);
+    private static final BooleanValue keepYOnlySpeed = new BooleanValue("KeepY Only Speed", true, () -> !isImportedMode() && keepY.get());
 
     @Setting
-    private static final BooleanValue intelligentPicker = new BooleanValue("Intelligent Picker", true);
+    private static final BooleanValue intelligentPicker = new BooleanValue("Intelligent Picker", true, () -> !isImportedMode());
 
     @Setting
-    public static final BooleanValue noSprint = new BooleanValue("No Sprint", false);
+    public static final BooleanValue noSprint = new BooleanValue("No Sprint", false, () -> !isImportedMode());
 
     @Setting
-    private static final ListValue edgeSafe = new ListValue("Edge Safe", new String[]{"None", "Safewalk", "Sneak", "Auto Input Fix"}, "None");
+    private static final ListValue edgeSafe = new ListValue("Edge Safe", new String[]{"None", "Safewalk", "Sneak", "Auto Input Fix"}, "None", () -> !isImportedMode());
 
     @Setting
-    private static final BooleanValue down = new BooleanValue("Down", true);
+    private static final BooleanValue down = new BooleanValue("Down", true, () -> !isImportedMode());
+
+    // Mirror the controller values here so KRS's settings discovery and config persistence
+    // treat imported options exactly like native module settings.
+    @Setting private static final ListValue sourceKeepY = ScaffoldModeController.keepY;
+    @Setting private static final IntValue sourceMultiPlace = ScaffoldModeController.multiPlace;
+    @Setting private static final BooleanValue sourceTellyOnJump = ScaffoldModeController.tellyOnJump;
+    @Setting private static final BooleanValue sourceKeepYOnRightClick = ScaffoldModeController.keepYOnRightClick;
+    @Setting private static final BooleanValue sourceDisableOnJumpPotion = ScaffoldModeController.disableOnJumpPotion;
+    @Setting private static final BooleanValue sourceAlwaysSprint = ScaffoldModeController.alwaysSprint;
+    @Setting private static final FloatValue ninjaEdgeDistance = ScaffoldModeController.ninjaEdgeDistance;
+    @Setting private static final IntValue ninjaMinDelay = ScaffoldModeController.ninjaMinDelay;
+    @Setting private static final IntValue ninjaMaxDelay = ScaffoldModeController.ninjaMaxDelay;
+    @Setting private static final IntValue ninjaSneakOnJump = ScaffoldModeController.ninjaSneakOnJump;
+    @Setting private static final BooleanValue ninjaRequireSneakKey = ScaffoldModeController.ninjaRequireSneakKey;
+    @Setting private static final BooleanValue ninjaRequireBlocks = ScaffoldModeController.ninjaRequireBlocks;
+    @Setting private static final BooleanValue ninjaRequireLookingDown = ScaffoldModeController.ninjaRequireLookingDown;
+    @Setting private static final BooleanValue ninjaDisableForward = ScaffoldModeController.ninjaDisableForward;
+    @Setting private static final BooleanValue ninjaAvoidDoubleSneaking = ScaffoldModeController.ninjaAvoidDoubleSneaking;
+    @Setting private static final BooleanValue breezilyAutoStrafe = ScaffoldModeController.breezilyAutoStrafe;
+    @Setting private static final BooleanValue breezilyOnlyStrafeOnGround = ScaffoldModeController.breezilyOnlyStrafeOnGround;
+    @Setting private static final IntValue breezilyGroundWaitTicks = ScaffoldModeController.breezilyGroundWaitTicks;
+    @Setting private static final IntValue breezilySwitchSpeed = ScaffoldModeController.breezilySwitchSpeed;
+    @Setting private static final FloatValue rushLookAhead = ScaffoldModeController.rushLookAhead;
+    @Setting private static final IntValue rushChain = ScaffoldModeController.rushChain;
+    @Setting private static final BooleanValue rushAutoHop = ScaffoldModeController.rushAutoHop;
+    @Setting private static final ListValue sourceScaffoldMode = ScaffoldModeController.sourceScaffoldMode;
+    @Setting private static final ListValue sourceSprintMode = ScaffoldModeController.sourceSprintMode;
+    @Setting private static final BooleanValue sourceTellyWatchdog = ScaffoldModeController.sourceTellyWatchdog;
+    @Setting private static final IntValue sourceTellyStraightTicks = ScaffoldModeController.sourceTellyStraightTicks;
+    @Setting private static final IntValue sourceTellyDiagonalTicks = ScaffoldModeController.sourceTellyDiagonalTicks;
+    @Setting private static final IntValue sourceTellyJumpDownTicks = ScaffoldModeController.sourceTellyJumpDownTicks;
+    @Setting private static final IntValue sourcePlaceDelay = ScaffoldModeController.sourcePlaceDelay;
+    @Setting private static final BooleanValue sourceAutoJump = ScaffoldModeController.sourceAutoJump;
+    @Setting private static final BooleanValue sourceSneak = ScaffoldModeController.sourceSneak;
+    @Setting private static final IntValue sourceSneakEvery = ScaffoldModeController.sourceSneakEvery;
+    @Setting private static final ListValue hopMode = ScaffoldModeController.hopMode;
+    @Setting private static final FloatValue hopSpeed = ScaffoldModeController.hopSpeed;
+    @Setting private static final BooleanValue hopAutoSprint = ScaffoldModeController.hopAutoSprint;
+    @Setting private static final FloatValue sourceIceThreshold = ScaffoldModeController.iceThreshold;
+    @Setting private static final FloatValue sourceClickSpeed = ScaffoldModeController.clickSpeed;
+    @Setting private static final BooleanValue sourceAutoSwap = ScaffoldModeController.autoSwap;
+    @Setting private static final BooleanValue sourceDisableInGui = ScaffoldModeController.disableInGui;
+    @Setting private static final BooleanValue sourceSpoofItem = ScaffoldModeController.spoofItem;
+    @Setting private static final BooleanValue sourceSilentSwing = ScaffoldModeController.silentSwing;
+    @Setting private static final KeyBindValue godBridgeKey = ScaffoldModeController.modeKeybinds[0];
+    @Setting private static final KeyBindValue tellyShortKey = ScaffoldModeController.modeKeybinds[1];
+    @Setting private static final KeyBindValue tellyLongKey = ScaffoldModeController.modeKeybinds[2];
+    @Setting private static final KeyBindValue snapKey = ScaffoldModeController.modeKeybinds[3];
+    @Setting private static final KeyBindValue rushKey = ScaffoldModeController.modeKeybinds[4];
+    @Setting private static final KeyBindValue ninjaKey = ScaffoldModeController.modeKeybinds[5];
+    @Setting private static final KeyBindValue breezilyKey = ScaffoldModeController.modeKeybinds[6];
+    @Setting private static final KeyBindValue snapPlusKey = ScaffoldModeController.modeKeybinds[7];
+    @Setting private static final KeyBindValue hypixelKey = ScaffoldModeController.modeKeybinds[8];
+    @Setting private static final KeyBindValue hopKey = ScaffoldModeController.modeKeybinds[9];
+    @Setting private static final KeyBindValue keepYOffKey = ScaffoldModeController.keepYKeybinds[0];
+    @Setting private static final KeyBindValue keepYTellyAKey = ScaffoldModeController.keepYKeybinds[1];
+    @Setting private static final KeyBindValue keepYTellyBKey = ScaffoldModeController.keepYKeybinds[2];
+
+    private final ScaffoldModeController importedModes = new ScaffoldModeController();
+    private final ScaffoldTowerController importedTower = new ScaffoldTowerController();
+    private String sessionMode = "";
+    private String sessionTowerMode = "";
+    private LocalPlayer sessionPlayer;
+    private ClientLevel sessionLevel;
+    private boolean inputPaused;
+    private boolean sourcePipelineThisTick;
 
     private static int hotbarStackSize = 0;
     private static boolean wasTowering = false;
@@ -224,6 +298,61 @@ public class Scaffold extends Module {
         super("Scaffold", ModuleCategory.Player, Keys.KEY_UNKNOWN, false, true);
     }
 
+    private static String[] scaffoldModes() {
+        List<String> modes = new ArrayList<>(List.of("Normal", "Telly"));
+        modes.addAll(List.of(ScaffoldModeController.MODES));
+        return modes.toArray(String[]::new);
+    }
+
+    private static String[] towerModes() {
+        List<String> modes = new ArrayList<>(List.of("Vanilla", "NCP", "Hypixel"));
+        for (String source : ScaffoldTowerController.MODES)
+            modes.add(source.equals("Vanilla") || source.equals("Hypixel") ? "Source " + source : source);
+        return modes.toArray(String[]::new);
+    }
+
+    public static boolean isImportedMode() {
+        return ScaffoldModeController.handles(mode.get());
+    }
+
+    static void selectImportedMode(String selected) {
+        if (ScaffoldModeController.handles(selected)) mode.set(selected);
+    }
+
+    private static String sourceTowerMode() {
+        String selected = towerMode.get();
+        if (selected.equals("Source Vanilla")) return "Vanilla";
+        if (selected.equals("Source Hypixel")) return "Hypixel";
+        if (selected.equals("Vanilla") || selected.equals("Hypixel") || selected.equals("NCP")) return null;
+        return ScaffoldTowerController.handles(selected) ? selected : null;
+    }
+
+    private boolean canRunImportedActions() {
+        LookTP lookTP = ModuleManager.getModule(LookTP.class);
+        return mc.player != null && mc.level != null
+                && (isImportedMode() || mc.gui.screen() == null && !GuiInputBlocker.shouldBlockGameMovement())
+                && !inputPaused && (lookTP == null || !lookTP.shouldStopClientInput());
+    }
+
+    private void synchronizeSession() {
+        if (sessionPlayer == mc.player && sessionLevel == mc.level
+                && sessionMode.equals(mode.get()) && sessionTowerMode.equals(towerMode.get())) return;
+        // Source mode changes use the source transition handler, not a full disable/re-enable.
+        if (sessionPlayer == mc.player && sessionLevel == mc.level
+                && ScaffoldModeController.handles(sessionMode) && isImportedMode()) {
+            sessionMode = mode.get();
+            sessionTowerMode = towerMode.get();
+            return;
+        }
+        // Never restore an old world's inventory slot onto a different player.
+        if (sessionPlayer != mc.player || sessionLevel != mc.level) {
+            lastSlot = null;
+            wasTowering = false;
+        }
+        onDisable();
+        onEnable();
+    }
+
     @Override
     public String tag() {
         return mode.get();
@@ -231,10 +360,19 @@ public class Scaffold extends Module {
 
     @Override
     public void onDisable() {
+        importedModes.reset();
+        importedTower.reset();
+        inputPaused = false;
+        sourcePipelineThisTick = false;
+        if (once) {
+            Client.rotationManager.stopRotation();
+            TimerUtil.reset();
+            BehaviorUtils.noKillAura = false;
+        }
         var player = mc.player;
         if (player != null && mc.level != null) {
-            if (wasTowering) {
-                switch (towerMode.get().toLowerCase(Locale.ROOT)) {
+            if (wasTowering && !ScaffoldModeController.handles(sessionMode)) {
+                switch (sessionTowerMode.toLowerCase(Locale.ROOT)) {
                     case "vanilla" -> {
                         if (hasAroundBlock())
                             MovementUtil.setVelocityY(-0.4);
@@ -243,9 +381,6 @@ public class Scaffold extends Module {
                 }
             }
             if (once) {
-                Client.rotationManager.stopRotation();
-                TimerUtil.reset();
-                BehaviorUtils.noKillAura = false;
                 if (lastSlot != null)
                     selectSlot(lastSlot);
             }
@@ -256,7 +391,6 @@ public class Scaffold extends Module {
         jumpGround = 0.0;
         wasTowering = false;
         checkGround = false;
-        wasTowering = false;
         launchY = null;
         startedScaffold = false;
         placedScaffoldBlock = false;
@@ -276,10 +410,24 @@ public class Scaffold extends Module {
         updateAutoSneak(false);
         PlayerUtil.INSTANCE.stopSpoof();
         blockHighlight.release();
+        hotbarStackSize = 0;
+        if (sessionPlayer == player && player != null) {
+            mc.options.keyJump.setDown(isPhysicalJumpDown());
+            mc.options.keyShift.setDown(isPhysicalKeyDown(mc.options.keyShift.saveString()));
+        }
+        sessionPlayer = null;
+        sessionLevel = null;
+        sessionMode = sessionTowerMode = "";
     }
 
     @Override
     public void onEnable() {
+        importedModes.reset();
+        importedTower.reset();
+        sessionPlayer = mc.player;
+        sessionLevel = mc.level;
+        sessionMode = mode.get();
+        sessionTowerMode = towerMode.get();
         var player = mc.player;
         if (player == null || mc.level == null) return;
 
@@ -303,16 +451,34 @@ public class Scaffold extends Module {
     }
 
     @Override
+    public void onWorld(WorldEvent event) {
+        lastSlot = null;
+        wasTowering = false;
+        onDisable();
+        // Remain enabled; the next input/update initializes the new world's state.
+    }
+
+    @Override
+    public void onMotion(MotionEvent event) {
+        if (!event.post && canRunImportedActions()
+                && (sourcePipelineThisTick ? importedModes.shouldSpoofGround() : importedTower.shouldSpoofGround()))
+            event.onGround = true;
+    }
+
+    @Override
     public void onBlockEdge(BlockEdgeEvent event) {
         if (mc.player == null || mc.level == null) return;
+        if (isImportedMode()) return;
 
-        if (edgeSafe.get().equalsIgnoreCase("safewalk") && (!down.get() || !isPhysicalKeyDown(mc.options.keyShift.saveString())))
+        if (edgeSafe.get().equalsIgnoreCase("safewalk") && !isDownScaffoldActive())
             event.cancel();
     }
 
     @Override
     public void onTick(TickEvent event) {
+        synchronizeSession();
         if (mc.player == null || mc.level == null) return;
+        if (isImportedMode()) return;
 
         tellyJumpedThisTick = false;
         tellyNormalJumpedThisTick = false;
@@ -334,6 +500,123 @@ public class Scaffold extends Module {
             mc.options.keyJump.setDown(true);
     }
 
+    /**
+     * Source onPreUpdate. Call once at LocalPlayer.aiStep HEAD, before ClientInput.tick.
+     * The module UpdateEvent is later than keyboard remapping and must not plan imported modes.
+     */
+    public static void preImportedUpdate() {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        if (scaffold == null || !scaffold.tempEnabled) return;
+        scaffold.synchronizeSession();
+        scaffold.inputPaused = false;
+        scaffold.sourcePipelineThisTick = false;
+        if (!scaffold.canRunImportedActions()) { scaffold.importedModes.reset(); scaffold.importedTower.reset(); return; }
+        boolean sourceBridge = isImportedMode();
+        if (sourceBridge) scaffold.importedModes.pollKeybinds(mc.gui.screen() != null);
+        boolean standaloneSourceTower = !sourceBridge && sourceTowerMode() != null && scaffold.isTowerRequested();
+        if (!sourceBridge && !standaloneSourceTower) {
+            scaffold.importedModes.reset();
+            return;
+        }
+        scaffold.sourcePipelineThisTick = true;
+        String sourceTower = sourceTowerMode();
+        // The original legacy names remain available for native Normal/Telly. Imported
+        // Vanilla/Hypixel use their supplied source algorithms, rather than legacy timer/speed.
+        if (sourceTower == null) sourceTower = towerMode.get().equalsIgnoreCase("hypixel") ? "Hypixel"
+                : towerMode.get().equalsIgnoreCase("ncp") ? "KRS NCP" : "Vanilla";
+        scaffold.importedModes.preUpdate(sourceBridge ? mode.get() : "God Bridge", tower.get(), sourceTower,
+                scaffold.importedTower, target -> {
+                    scaffold.placedScaffoldBlock = true;
+                    scaffold.lastPlacedScaffoldBlock = target;
+                    startedScaffold = true;
+                }, scaffold::runImportedLegacyNcp);
+        hotbarStackSize = scaffold.importedModes.blockCount();
+        wasTowering = scaffold.importedModes.isTowerActive();
+    }
+
+    /** The pre-existing KRS NCP option remains its own legacy sequence, in post-input order. */
+    private void runImportedLegacyNcp() {
+        var player = mc.player;
+        if (player == null || !importedModes.isTowerActive()) { jumpGround = 0; return; }
+        if (!hasAroundBlock()) return;
+        if (player.onGround()) {
+            jumpGround = player.getY();
+            MovementUtil.setVelocityY(0.42);
+        }
+        if (player.getY() > jumpGround + 0.79f) {
+            player.setPos(player.getX(), Mth.floor(player.getY()), player.getZ());
+            MovementUtil.setVelocityY(0.42);
+            jumpGround = player.getY();
+        }
+    }
+
+    /** Runs on the fresh camera-relative snapshot, after preImportedUpdate, before MovementFix. */
+    public static void hookImportedInput(ClientInput input, boolean blocked) {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        if (scaffold == null || !scaffold.tempEnabled || input == null) return;
+        scaffold.synchronizeSession();
+        scaffold.inputPaused = blocked;
+        if (!scaffold.canRunImportedActions()) {
+            scaffold.importedModes.reset();
+            scaffold.importedTower.reset();
+            return;
+        }
+        if (scaffold.sourcePipelineThisTick) scaffold.importedModes.applyInput(input);
+    }
+
+    public static void finishImportedInput(ClientInput input) {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        if (scaffold != null && scaffold.tempEnabled && scaffold.sourcePipelineThisTick && !scaffold.inputPaused)
+            scaffold.importedModes.finishInput(input);
+    }
+
+    /** A temporary ownership predicate; MovementFix must not toggle its module/config state. */
+    public static boolean forcesImportedMovementFix() {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        return scaffold != null && scaffold.tempEnabled && scaffold.sourcePipelineThisTick && !scaffold.inputPaused && scaffold.importedModes.forceMovementFix();
+    }
+
+    /** Ninja and grounded Breezily explicitly disable Raven movement fix while owning rotations. */
+    public static boolean bypassesImportedMovementFix() {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        return scaffold != null && scaffold.tempEnabled && scaffold.sourcePipelineThisTick && !scaffold.inputPaused && scaffold.importedModes.bypassMovementFix();
+    }
+
+    /** Exact source quantization is already applied by RavenScaffoldCore. */
+    public static boolean ownsImportedRotations() {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        return scaffold != null && scaffold.tempEnabled && scaffold.sourcePipelineThisTick && !scaffold.inputPaused
+                && scaffold.importedModes.ownsRotations() && Client.rotationManager != null
+                && Client.rotationManager.isSourceQuantizedRotation();
+    }
+
+    public static void beforeImportedInteract() {
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        if (scaffold != null && scaffold.tempEnabled && scaffold.sourcePipelineThisTick) scaffold.importedModes.beforeInteract();
+    }
+
+    @Override
+    public void onSendPacket(SendPacketEvent event) {
+        if (sourcePipelineThisTick && !importedModes.allowPacket(event.packet)) event.cancel();
+    }
+
+    @Override
+    public void onMouseClick(MouseClickEvent event) {
+        if (isImportedMode() && event.button >= 0 && !importedModes.allowMouse(event.button)) event.cancel();
+    }
+
+    private boolean isTowerRequested() {
+        var player = mc.player;
+        if (!tower.get() || player == null || !isTowerJumpInputActive(player)
+                || player.getAbilities().flying || player.isPassenger() || player.isFallFlying()
+                || player.isInWater() || player.isInLava()) return false;
+        if (isImportedMode()) return true; // Source towers are stationary; movement/jump is bridging.
+        boolean moving = isPhysicalMovementInputDown();
+        return towerWhen.get().equalsIgnoreCase("always")
+                || towerWhen.get().equalsIgnoreCase("standing") && !moving
+                || towerWhen.get().equalsIgnoreCase("moving") && moving;
+    }
+
     public static void hookTellyJumpInput(ClientInput input) {
         Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
         if (scaffold == null || !scaffold.tempEnabled)
@@ -346,6 +629,7 @@ public class Scaffold extends Module {
         var player = mc.player;
         if (input == null || player == null || mc.level == null || player.input != input || !isTellyMode())
             return;
+        if (sourceTowerMode() != null && isTowerRequested()) return;
 
         updateTellyJumpGroundInput(player);
         updateTellyClutchMode(player);
@@ -622,6 +906,8 @@ public class Scaffold extends Module {
     }
 
     private boolean isTowerJumpInputActive(net.minecraft.client.player.LocalPlayer player) {
+        // Source bridging jumps (including Snap/Breezily) must not accidentally become towers.
+        if (isImportedMode()) return isPhysicalJumpDown() && !isPhysicalMovementInputDown();
         return isTellyUpwardJumpInputActive(player) && !isTellyJumpPriorityActive(player);
     }
 
@@ -651,7 +937,7 @@ public class Scaffold extends Module {
         var player = mc.player;
         var level = mc.level;
         if (player == null || level == null) return false;
-        if (down.get() && isPhysicalKeyDown(mc.options.keyShift.saveString())) return false;
+        if (isDownScaffoldActive()) return false;
         if (!player.onGround() || player.getAbilities().flying || player.isPassenger() || player.isSwimming() || player.isFallFlying())
             return false;
 
@@ -702,7 +988,13 @@ public class Scaffold extends Module {
         if (input == null || mc.player == null || mc.level == null)
             return;
 
-        if (!ModuleManager.getModuleState(Scaffold.class) || !edgeSafe.get().equalsIgnoreCase("sneak")) {
+        if (!ModuleManager.getModuleState(Scaffold.class) || isImportedMode() || !edgeSafe.get().equalsIgnoreCase("sneak")) {
+            autoSneaking = false;
+            return;
+        }
+
+        Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
+        if ((isImportedMode() || sourceTowerMode() != null) && (scaffold == null || !scaffold.canRunImportedActions())) {
             autoSneaking = false;
             return;
         }
@@ -712,7 +1004,7 @@ public class Scaffold extends Module {
 
         if (shouldSneak)
             setInputSneak(input, true);
-        else if (down.get() && isPhysicalKeyDown(mc.options.keyShift.saveString()))
+        else if (isDownScaffoldActive())
             setInputSneak(input, false);
     }
 
@@ -725,6 +1017,7 @@ public class Scaffold extends Module {
     }
 
     private void handleAutoInputFix(ClientInput clientInput) {
+        if (isImportedMode()) return;
         var player = mc.player;
         var level = mc.level;
         if (clientInput == null || player == null || level == null)
@@ -851,7 +1144,7 @@ public class Scaffold extends Module {
 
         if (shouldSneak || autoSneaking) {
             boolean physicalSneak = isPhysicalKeyDown(mc.options.keyShift.saveString());
-            setSneakDown(shouldSneak || physicalSneak && !down.get());
+            setSneakDown(shouldSneak || physicalSneak && (isImportedMode() || !down.get()));
         }
 
         autoSneaking = shouldSneak;
@@ -935,9 +1228,17 @@ public class Scaffold extends Module {
 
     @Override
     public void onUpdate(UpdateEvent event) {
+        synchronizeSession();
         var player = mc.player;
         var level = mc.level;
         if (player == null || level == null) return;
+        // Source rotations and placement have already run before this tick's input.
+        if (isImportedMode() || sourcePipelineThisTick) return;
+
+        if ((isImportedMode() || sourceTowerMode() != null) && !canRunImportedActions()) {
+            pauseImportedActions();
+            return;
+        }
 
         countBlockItems(player.getInventory());
         updateTellyClutchMode(player);
@@ -947,6 +1248,9 @@ public class Scaffold extends Module {
         updateTellyJumpGroundInput(player);
 
         if (hotbarStackSize <= 0) {
+            importedModes.reset();
+            importedTower.reset();
+            updateAutoSneak(false);
             if (wasTowering) {
                 switch (towerMode.get().toLowerCase(Locale.ROOT)) {
                     case "vanilla" -> {
@@ -990,8 +1294,9 @@ public class Scaffold extends Module {
 
         updateTellyStage(player);
 
+        if (lastSlot == null) lastSlot = player.getInventory().getSelectedSlot();
         once = true;
-        boolean skipScaffoldActionThisTick = consumeSnapRotationReset();
+        boolean skipScaffoldActionThisTick = !isImportedMode() && consumeSnapRotationReset();
 
         if (noSprint.get() && !isTellyJumpPriorityActive(player))
             player.setSprinting(false);
@@ -1006,9 +1311,21 @@ public class Scaffold extends Module {
             wasTowering = false;
         }
 
-        if (tower.get()
+        String sourceTower = sourceTowerMode();
+        if (sourceTower != null) {
+            boolean active = isTowerRequested();
+            if (active && towerCenter.get() && !isPhysicalMovementInputDown()) {
+                Vec3 center = Vec3.atCenterOf(player.blockPosition());
+                AABB centeredBox = player.getBoundingBox().move(center.x - player.getX(), 0, center.z - player.getZ());
+                if (level.noCollision(player, centeredBox))
+                    player.setPos(center.x, player.getY(), center.z);
+            }
+            importedTower.tick(sourceTower, active);
+            wasTowering = active;
+            if (active) launchY = player.blockPosition().getY();
+        } else if (tower.get()
                 && (!towerMode.get().equalsIgnoreCase("hypixel") || !player.hasEffect(MobEffects.JUMP_BOOST) && !ModuleManager.getModuleState(SpeedModule.class) || player.hasEffect(MobEffects.SPEED))
-                && (towerWhen.get().equalsIgnoreCase("always") || towerWhen.get().equalsIgnoreCase("standing") && !MovementUtil.isMoving() || towerWhen.get().equalsIgnoreCase("moving") && MovementUtil.isMoving())) {
+                && (isImportedMode() || towerWhen.get().equalsIgnoreCase("always") || towerWhen.get().equalsIgnoreCase("standing") && !MovementUtil.isMoving() || towerWhen.get().equalsIgnoreCase("moving") && MovementUtil.isMoving())) {
             if (isTowerJumpInputActive(player)) {
                 if (!towerMode.get().equalsIgnoreCase("hypixel") || player.onGround())
                     wasTowering = true;
@@ -1096,6 +1413,8 @@ public class Scaffold extends Module {
         if (wasTowering)
             startedScaffold = true;
 
+        if (sourceTower != null && wasTowering) return;
+
         if (updateTellyGroundKeepY) {
             launchY = player.blockPosition().getY();
         } else if (!shouldFreezeTellyKeepY(player)) {
@@ -1151,6 +1470,28 @@ public class Scaffold extends Module {
         if (!hypixelPlaced) {
             placeBlock(placementTarget);
         }
+    }
+
+    private void pauseImportedActions() {
+        importedModes.reset();
+        importedTower.reset();
+        wasTowering = false;
+        startedScaffold = false;
+        placedScaffoldBlock = false;
+        lastPlacedScaffoldBlock = null;
+        jumpGround = 0;
+        checkGround = false;
+        updateAutoSneak(false);
+        if (once) {
+            Client.rotationManager.stopRotation();
+            TimerUtil.reset();
+            BehaviorUtils.noKillAura = false;
+            if (lastSlot != null) selectSlot(lastSlot);
+        }
+        PlayerUtil.INSTANCE.stopSpoof();
+        once = false;
+        lastSlot = null;
+        clearMathPlacementTarget();
     }
 
     private void placeBlock(PlacementTarget target) {
@@ -1702,7 +2043,7 @@ public class Scaffold extends Module {
     }
 
     private int currentSearchRange() {
-        if (down.get() && isPhysicalKeyDown(mc.options.keyShift.saveString()))
+        if (isDownScaffoldActive())
             return 1;
         if (isPhysicalKeyDown(mc.options.keyJump.saveString()) && !MovementUtil.hasXZMotion() && MovementUtil.isBlockBelow())
             return 0;
@@ -2409,6 +2750,8 @@ public class Scaffold extends Module {
     }
 
     private boolean isRotationReadyForPlacement(PlacementTarget target) {
+        if (isImportedMode() || importedTower.isActive())
+            return currentPlacementHit(target) != null;
         if (rotationMode.get().equalsIgnoreCase("none"))
             return true;
         if (isNoHitCheckActive(target))
@@ -2443,13 +2786,13 @@ public class Scaffold extends Module {
     }
 
     private static boolean usesRotationSpeed() {
-        return rotationMode.get().equalsIgnoreCase("math")
+        return !isImportedMode() && (rotationMode.get().equalsIgnoreCase("math")
                 || rotationMode.get().equalsIgnoreCase("simple")
-                || rotationMode.get().equalsIgnoreCase("backwards");
+                || rotationMode.get().equalsIgnoreCase("backwards"));
     }
 
     private static boolean usesMathPreRotation() {
-        return rotationMode.get().equalsIgnoreCase("math") && !isSnapRotationActive();
+        return !isImportedMode() && rotationMode.get().equalsIgnoreCase("math") && !isSnapRotationActive();
     }
 
     private static boolean hasNoHitCheckOption() {
@@ -2525,7 +2868,7 @@ public class Scaffold extends Module {
     }
 
     private static boolean isSnapRotationActive() {
-        return (rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple")) && snapRotation.get();
+        return !isImportedMode() && (rotationMode.get().equalsIgnoreCase("math") || rotationMode.get().equalsIgnoreCase("simple")) && snapRotation.get();
     }
 
     private float getRotationSpeed() {
@@ -2580,7 +2923,7 @@ public class Scaffold extends Module {
     }
 
     private static boolean isDownScaffoldActive() {
-        return down.get() && isPhysicalKeyDown(mc.options.keyShift.saveString());
+        return !isImportedMode() && down.get() && isPhysicalKeyDown(mc.options.keyShift.saveString());
     }
 
     private void faceScaffoldRotation(BlockPos targetBlock, PlacementTarget placementTarget, PlacementTarget preRotationTarget, boolean targetBlockReplaceable) {
@@ -3137,7 +3480,9 @@ public class Scaffold extends Module {
 
     public static boolean shouldSuppressTellyNormalJumpSprintHook() {
         Scaffold scaffold = ModuleManager.getModule(Scaffold.class);
-        return scaffold != null && scaffold.tempEnabled && scaffold.shouldSuppressTellyNormalJumpSprint();
+        return scaffold != null && scaffold.tempEnabled
+                && (scaffold.shouldSuppressTellyNormalJumpSprint()
+                || isImportedMode() && scaffold.importedModes.suppressSprint(mode.get()));
     }
 
     public static int getHotbarStackSize() {

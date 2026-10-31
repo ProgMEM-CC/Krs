@@ -1,6 +1,7 @@
 package com.instrumentalist.mixin.injector;
 
 import com.instrumentalist.krs.Client;
+import com.instrumentalist.krs.hacks.features.combat.Displace;
 import com.instrumentalist.krs.events.EventManager;
 import com.instrumentalist.krs.events.features.ModifyPacketEvent;
 import com.instrumentalist.krs.events.features.SendPacketEvent;
@@ -79,6 +80,7 @@ public abstract class ClientConnectionMixin implements IConnection {
             return;
         }
 
+        Displace.beforeSendPacket((Connection) (Object) this, packet);
         EventManager eventManager = Client.eventManager;
         if (eventManager == null || packet == null || !eventManager.hasListeners(SendPacketEvent.class))
             return;

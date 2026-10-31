@@ -1,6 +1,7 @@
 package com.instrumentalist.mixin.injector;
 
 import com.instrumentalist.krs.hacks.features.combat.Velocity;
+import com.instrumentalist.krs.hacks.features.combat.Displace;
 import com.instrumentalist.krs.hacks.ModuleManager;
 import com.instrumentalist.krs.hacks.features.movement.MovementFix;
 import com.instrumentalist.krs.hacks.features.player.LookTP;
@@ -24,25 +25,35 @@ public abstract class KeyboardInputMixin {
         LookTP lookTP = ModuleManager.getModule(LookTP.class);
 
         if (lookTP != null && lookTP.shouldStopClientInput()) {
+            Scaffold.hookImportedInput(input, true);
+            Displace.beforeMovementCorrection(true);
             InputUtil.stop(input);
             MovementFix.updateInput(input);
             Scaffold.hookEdgeSafeSneakInput(input);
+            Displace.afterMovementCorrection(input);
             return;
         }
 
         if (!GuiInputBlocker.shouldBlockGameMovement()) {
+            Scaffold.hookImportedInput(input, false);
+            Displace.beforeMovementCorrection(false);
             MovementFix.updateInput(input);
             Scaffold.hookEdgeSafeSneakInput(input);
             Velocity.hookJumpResetInput(input);
             Scaffold.hookTellyJumpInput(input);
             Scaffold.hookAutoInputFix(input);
             WTap.hookWTapInput(input);
+            Scaffold.finishImportedInput(input);
+            Displace.afterMovementCorrection(input);
             return;
         }
 
+        Scaffold.hookImportedInput(input, true);
+        Displace.beforeMovementCorrection(true);
         GuiInputBlocker.releaseMovementKeys();
         InputUtil.stop(input);
         MovementFix.updateInput(input);
         Scaffold.hookEdgeSafeSneakInput(input);
+        Displace.afterMovementCorrection(input);
     }
 }

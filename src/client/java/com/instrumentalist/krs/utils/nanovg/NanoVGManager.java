@@ -43,25 +43,28 @@ public class NanoVGManager implements IMinecraft {
     private boolean worldAnchoredQueued;
 
     public static float getUiScale() {
-        int guiScale = mc.getWindow().getGuiScale();
-        if (guiScale <= 0) return 1.0f;
-        return Math.max(0.25f, guiScale / 2.0f);
+        // NanoVG uses the window's screen-coordinate space below. Minecraft's
+        // GUI scale is already applied to Screen mouse events and must not be
+        // applied a second time to the render transform.
+        return 1.0f;
     }
 
     public static float getScaledScreenWidth() {
-        return mc.getWindow().getScreenWidth() / getUiScale();
+        return Math.max(1, mc.getWindow().getScreenWidth());
     }
 
     public static float getScaledScreenHeight() {
-        return mc.getWindow().getScreenHeight() / getUiScale();
+        return Math.max(1, mc.getWindow().getScreenHeight());
     }
 
     public static float toScaledMouseX(double mouseX) {
-        return (float) (mouseX * mc.getWindow().getGuiScale() / getUiScale());
+        int guiWidth = Math.max(1, mc.getWindow().getGuiScaledWidth());
+        return (float) (mouseX * getScaledScreenWidth() / guiWidth);
     }
 
     public static float toScaledMouseY(double mouseY) {
-        return (float) (mouseY * mc.getWindow().getGuiScale() / getUiScale());
+        int guiHeight = Math.max(1, mc.getWindow().getGuiScaledHeight());
+        return (float) (mouseY * getScaledScreenHeight() / guiHeight);
     }
 
     public static float fromFramebufferX(double x) {
@@ -352,17 +355,15 @@ public class NanoVGManager implements IMinecraft {
                 framebufferWidth = GraphicsApiCompatibility.getActiveLayerWidth();
                 framebufferHeight = GraphicsApiCompatibility.getActiveLayerHeight();
             }
-            float devicePixelRatio = Math.max(1.0f, Math.max(
+            float devicePixelRatio = Math.max(0.001f, Math.max(
                     framebufferWidth / (float) Math.max(1, width),
                     framebufferHeight / (float) Math.max(1, height)
             ));
-            float uiScale = getUiScale();
 
             instance.beginFrame(width, height, devicePixelRatio);
             frameStarted = true;
             instance.save();
             try {
-                instance.scale(0f, 0f, uiScale);
                 vg.accept(instance);
             } finally {
                 instance.restore();

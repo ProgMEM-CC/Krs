@@ -51,6 +51,7 @@ dependencies {
 
     library "io.github.spair:imgui-java-natives-windows:${project.imguiVersion}"
     library "io.github.spair:imgui-java-natives-linux:${project.imguiVersion}"
+    // imgui-java publishes one universal macOS native library containing x86_64 and arm64 slices.
     library "io.github.spair:imgui-java-natives-macos:${project.imguiVersion}"
 
     library "org.apache.httpcomponents:httpclient:4.5.14"
@@ -139,6 +140,37 @@ java {
 
     sourceCompatibility = javaVersion
     targetCompatibility = javaVersion
+}
+
+// Dependency-free, headless checks for the scaffold mode catalog/settings/input math.
+// No client window, server connection or JUnit dependency is needed.
+sourceSets {
+    scaffoldTest {
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+        runtimeClasspath += sourceSets.client.output + sourceSets.client.runtimeClasspath
+    }
+}
+
+tasks.register('scaffoldModeTest', JavaExec) {
+    group = 'verification'
+    description = 'Checks scaffold mode coverage, settings persistence and input transformations.'
+    dependsOn tasks.named('scaffoldTestClasses')
+    classpath = sourceSets.scaffoldTest.runtimeClasspath
+    mainClass = 'com.instrumentalist.krs.hacks.features.player.ScaffoldModeTest'
+    systemProperty 'krs.referenceRoot', project.projectDir.absolutePath
+    // Minecraft's logging classes may initialize during config construction.
+    // Keep generated logs in ignored build output, never in the project root.
+    workingDir = layout.buildDirectory.dir('scaffold-test-run').get().asFile
+    doFirst {
+        workingDir.mkdirs()
+    }
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('scaffoldModeTest')
 }
 
 jar {

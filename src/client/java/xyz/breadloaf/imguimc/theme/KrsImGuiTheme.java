@@ -1,7 +1,6 @@
 package xyz.breadloaf.imguimc.theme;
 
 import imgui.ImGui;
-import imgui.ImGuiIO;
 import imgui.ImGuiStyle;
 import imgui.flag.ImGuiCol;
 
@@ -84,29 +83,30 @@ final class KrsImGuiTheme {
     }
 
     private static void applyLayout(ImGuiStyle style) {
-        float scale = getScale();
-
+        // Framebuffer density is a renderer concern. Keep layout values in
+        // logical units so Retina displays don't make every widget twice as
+        // large; the ImGui renderer scales the framebuffer separately.
         style.setAlpha(1.0f);
         style.setDisabledAlpha(0.58f);
-        style.setWindowPadding(14f * scale, 11f * scale);
-        style.setFramePadding(9f * scale, 6f * scale);
-        style.setCellPadding(6f * scale, 4f * scale);
-        style.setItemSpacing(9f * scale, 7f * scale);
-        style.setItemInnerSpacing(7f * scale, 5f * scale);
-        style.setIndentSpacing(18f * scale);
-        style.setScrollbarSize(14f * scale);
-        style.setGrabMinSize(10f * scale);
-        style.setWindowRounding(8f * scale);
-        style.setChildRounding(6f * scale);
-        style.setFrameRounding(5f * scale);
-        style.setPopupRounding(6f * scale);
-        style.setScrollbarRounding(7f * scale);
-        style.setGrabRounding(5f * scale);
-        style.setTabRounding(6f * scale);
-        style.setWindowBorderSize(1f * scale);
-        style.setChildBorderSize(1f * scale);
-        style.setPopupBorderSize(1f * scale);
-        style.setFrameBorderSize(1f * scale);
+        style.setWindowPadding(14f, 11f);
+        style.setFramePadding(9f, 6f);
+        style.setCellPadding(6f, 4f);
+        style.setItemSpacing(9f, 7f);
+        style.setItemInnerSpacing(7f, 5f);
+        style.setIndentSpacing(18f);
+        style.setScrollbarSize(14f);
+        style.setGrabMinSize(10f);
+        style.setWindowRounding(8f);
+        style.setChildRounding(6f);
+        style.setFrameRounding(5f);
+        style.setPopupRounding(6f);
+        style.setScrollbarRounding(7f);
+        style.setGrabRounding(5f);
+        style.setTabRounding(6f);
+        style.setWindowBorderSize(1f);
+        style.setChildBorderSize(1f);
+        style.setPopupBorderSize(1f);
+        style.setFrameBorderSize(1f);
         style.setTabBorderSize(0f);
         style.setWindowTitleAlign(0.5f, 0.5f);
         style.setAntiAliasedLines(true);
@@ -171,13 +171,4 @@ final class KrsImGuiTheme {
         style.setColor(ImGuiCol.ModalWindowDimBg, 0, 0, 0, 110);
     }
 
-    private static float getScale() {
-        ImGuiIO io = ImGui.getIO();
-        float scale = Math.max(io.getDisplayFramebufferScaleX(), io.getDisplayFramebufferScaleY());
-
-        if (!Float.isFinite(scale) || scale < 1.0f)
-            return 1.0f;
-
-        return scale;
-    }
 }
