@@ -21,6 +21,7 @@ public final class ScaffoldModeTest {
         checkSettings();
         checkConfigRoundTrip();
         checkSourceMathBoundary();
+        BlockInSourceTest.run();
         RavenSourceParityTest.run();
         RavenMixinContractTest.run();
         System.out.println("Scaffold mode checks passed: " + checks);
